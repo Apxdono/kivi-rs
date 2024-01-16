@@ -20,3 +20,31 @@ My pet project to learn Rust.
 Crappy code expected!
 
 **Use at own risk**.
+
+## Building
+
+Requires [Rust Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) to be installed.
+
+```sh
+cargo build
+```
+
+
+## Running locally
+
+```sh
+cargo run <arguments>
+
+# OR
+cargo build
+
+./target/debug/kivi -h
+```
+
+Additionally you can spin up KV storages in Docker using `docker-compose`
+
+```sh
+docker-compose up -d
+```
+
+Consul: [local UI link](http://127.0.0.1:8500/ui/)

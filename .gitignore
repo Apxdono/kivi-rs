@@ -1,0 +1,3 @@
+/target
+.consul-token
+Cargo.lock

@@ -1,0 +1,21 @@
+[package]
+name = "kivi-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Connect and browse Key-Value storages"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+base64 = "0.21.7"
+clap = { version = "4.4.16", features = ["derive", "env", "unicode", "cargo"] }
+serde = { version = "1.0.195", features = ["derive", "serde_derive"] }
+ureq = { version = "2.9.1", features = [
+    "json",
+    "charset",
+    "gzip",
+    "native-certs",
+] }
+
+[[bin]]
+name = "kivi"
+path = "src/main.rs"

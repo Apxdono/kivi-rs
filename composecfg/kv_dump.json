@@ -1,0 +1,12 @@
+[
+	{
+		"key": "svc/meta/service-a/config",
+		"flags": 0,
+		"value": "ewogICJwb3J0Ijo4MCAKfQ=="
+	},
+	{
+		"key": "svc/meta/webdav/config",
+		"flags": 0,
+		"value": "ewogICJwb3J0IjogMzAwMCwKICAiYmFzZV9wYXRoIjogIi9mcy9zdG9yYWdlIgp9"
+	}
+]

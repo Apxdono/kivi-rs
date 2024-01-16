@@ -1,0 +1,23 @@
+version: "3"
+
+services:
+  consul-server:
+    image: hashicorp/consul:1.17.1
+    container_name: consul-server1
+    restart: always
+    volumes:
+     - ./composecfg/server.json:/consul/config/server.json
+     - ./composecfg/certs/:/consul/config/certs/
+     - ./composecfg/server-acl.json:/consul/config/consul-acl.json
+     - ./composecfg/kv_dump.json:/consul/dumps/kv_dump.json
+    networks:
+      - consul
+    ports:
+      - "8500:8500"
+      - "8600:8600/tcp"
+      - "8600:8600/udp"
+    command: "agent -bootstrap-expect=1"
+
+networks:
+  consul:
+    driver: bridge

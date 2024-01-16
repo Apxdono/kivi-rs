@@ -8,6 +8,7 @@ description = "Connect and browse Key-Value storages"
 [dependencies]
 base64 = "0.21.7"
 clap = { version = "4.4.16", features = ["derive", "env", "unicode", "cargo"] }
+edit = "0.1.5"
 serde = { version = "1.0.195", features = ["derive", "serde_derive"] }
 ureq = { version = "2.9.1", features = [
     "json",

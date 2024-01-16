@@ -1,19 +1,18 @@
 use crate::{
-    cli_def::{KVSubs, ListCmdConfig, ReadCmdConfig},
+    cli_def::{KVSubs, ListCmdConfig, ReadCmdConfig, WriteCmdConfig},
     kvsource::{KVDisplayConfig, KVError, KVSource, KVValue},
-    utils::{build_url, create_str_linter, decodeb64_safe, identity_str},
+    utils::*,
 };
 use clap::Parser;
 use core::result::Result;
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
 use ureq::{Agent, AgentBuilder, Error, Middleware, Request, Response};
 
 const KV_API_PATH: &str = "/v1/kv/";
 const FIRST_LEVEL_KEYS_PARAMS: &str = "?keys=true&separator=/";
 
 /// Represents Consul KV source
-pub struct ConsulSource<'a> {
+pub struct ConsulRemote<'a> {
     pub config: &'a ConsulCommandConfig,
     pub agent: Agent,
 }
@@ -39,7 +38,7 @@ impl Middleware for ConsulAuthMiddleware {
     }
 }
 
-impl<'a> ConsulSource<'a> {
+impl<'a> ConsulRemote<'a> {
     pub fn new(config: &'a ConsulCommandConfig, agent_builder: AgentBuilder) -> Self {
         Self {
             config,
@@ -49,7 +48,6 @@ impl<'a> ConsulSource<'a> {
         }
     }
 }
-
 /// Represents stored/read Consul Value
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -137,13 +135,25 @@ fn process_consul_response(
     };
 }
 
-fn to_consul_url(consul: &ConsulSource, suffix: &String) -> String {
-    return build_url(&consul.config.url, KV_API_PATH, suffix);
+impl<'a> ConsulRemote<'a> {
+    fn to_consul_url(&self, suffix: &String) -> String {
+        return build_url(&self.config.url, KV_API_PATH, suffix);
+    }
+
+    fn write_to_path(&self, write_cfg: WriteCmdConfig, content: String) -> Result<(), KVError> {
+        let consul_url = self.to_consul_url(&write_cfg.path);
+        let res_response = self.agent.put(&consul_url).send_bytes(content.as_bytes());
+
+        return match res_response {
+            Err(status) => remap_consul_errors(status),
+            Ok(_) => Ok(()),
+        };
+    }
 }
 
-impl<'a> KVSource for ConsulSource<'a> {
+impl<'a> KVSource for ConsulRemote<'a> {
     fn list(&self, list_cfg: ListCmdConfig) -> Result<Vec<String>, KVError> {
-        let consul_url = to_consul_url(self, &list_cfg.prefix) + FIRST_LEVEL_KEYS_PARAMS;
+        let consul_url = self.to_consul_url(&list_cfg.prefix) + FIRST_LEVEL_KEYS_PARAMS;
         let request = self.agent.get(&consul_url);
 
         let res_response: Result<ureq::Response, ureq::Error> = request.call();
@@ -158,7 +168,7 @@ impl<'a> KVSource for ConsulSource<'a> {
     }
 
     fn read_path(&self, read_cfg: ReadCmdConfig) -> Result<KVValue, KVError> {
-        let consul_url = to_consul_url(self, &read_cfg.path);
+        let consul_url = self.to_consul_url(&read_cfg.path);
         let request = self.agent.get(&consul_url);
 
         let res_response: Result<ureq::Response, ureq::Error> = request.call();
@@ -172,8 +182,24 @@ impl<'a> KVSource for ConsulSource<'a> {
         };
     }
 
-    fn write_path(&self, _path: String, _value: KVValue) -> Result<(), KVError> {
-        todo!()
+    fn write_path(&self, write_cfg: WriteCmdConfig) -> Result<(), KVError> {
+        let write_new_value = |content| self.write_to_path(write_cfg.clone(), content);
+
+        if write_cfg.is_in_place_edit {
+            return self
+                .read_path(ReadCmdConfig {
+                    is_encoded: false,
+                    path: write_cfg.path.to_owned(),
+                })
+                .map(|kv_val| kv_val.value)
+                .and_then(edit_old_value)
+                .and_then(write_new_value);
+        } else {
+            return match write_cfg.data_file.to_owned() {
+                Some(file) => read_file_value(file).and_then(write_new_value),
+                None => Ok(()),
+            };
+        }
     }
 
     fn execute_kv_command(&self) {
@@ -181,18 +207,21 @@ impl<'a> KVSource for ConsulSource<'a> {
             KVSubs::Read(read_cmd) => {
                 let read_res = self.read_path(read_cmd.clone());
                 match read_res {
-                    Ok(kv_val) => println!("{}", kv_val.value),
+                    Ok(kv_val) => print!("{}", kv_val.value),
                     Err(err) => eprintln!("{err}"),
                 }
             }
             KVSubs::List(list_cmd) => {
                 let list_res = self.list(list_cmd.clone());
                 match list_res {
-                    Ok(keys) => {
-                        let mut lock = io::stdout().lock();
-                        keys.iter().for_each(|k| writeln!(lock, "{}", k).unwrap());
-                    }
+                    Ok(keys) => println!("{}", keys.join("\n")),
                     Err(err) => eprintln!("{err}"),
+                }
+            }
+            KVSubs::Write(write_cmd) => {
+                let write_res = self.write_path(write_cmd.clone());
+                if let Err(err) = write_res {
+                    eprintln!("{err}");
                 }
             }
         }

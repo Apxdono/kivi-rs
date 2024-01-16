@@ -1,4 +1,8 @@
+use std::fs;
+
 use base64::{engine::general_purpose, Engine as _};
+
+use crate::kvsource::KVError;
 
 const PATH_DELIMITER: &str = "/";
 
@@ -46,4 +50,22 @@ pub fn build_url(url: &str, base_path: &str, suffix: &str) -> String {
     let consul_url_parts = vec![&linted_base_url, base_path, &linted_suffix];
 
     return consul_url_parts.join("");
+}
+
+pub fn edit_old_value(content: String) -> Result<String, KVError> {
+    let modified = edit::edit(content);
+
+    return match modified {
+        Ok(body) => Ok(body),
+        Err(err) => Err(KVError::DataFileErr(format!("{err}"))),
+    };
+}
+
+pub fn read_file_value(file: String) -> Result<String, KVError> {
+    let content = fs::read_to_string(file);
+
+    return match content {
+        Ok(body) => Ok(body),
+        Err(err) => Err(KVError::DataFileErr(format!("{err}"))),
+    };
 }

@@ -9,7 +9,7 @@ mod utils;
 
 use cli_def::Subs;
 
-use crate::{consul_source::ConsulSource, kvsource::KVSource};
+use crate::{consul_source::ConsulRemote, kvsource::KVSource};
 
 const DEFAULT_KO_TIME: Duration = Duration::from_secs(5);
 
@@ -24,7 +24,7 @@ fn main() {
     let client_builder: AgentBuilder = build_client();
     match &cli.command {
         Some(Subs::Consul(cfg)) => {
-            let consul = ConsulSource::new(cfg, client_builder);
+            let consul = ConsulRemote::new(cfg, client_builder);
             consul.execute_kv_command();
         }
         None => println!("Nothing happened"),

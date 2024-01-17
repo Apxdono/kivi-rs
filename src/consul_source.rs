@@ -40,7 +40,7 @@ struct ConsulValue {
     lock_index: u8,
     key: String,
     flags: u8,
-    value: String,
+    value: Option<String>,
     create_index: u32,
     modify_index: u32,
 }
@@ -86,9 +86,14 @@ fn to_kv_value(display_cfg: KVDisplayConfig) -> impl Fn(ConsulValue) -> KVValue 
             false => decodeb64_safe,
         };
 
+        let extracted = match consul_val.value {
+            None => "".to_owned(),
+            Some(st) => extractor(&st),
+        };
+
         return KVValue {
             path: consul_val.key.to_string(),
-            value: extractor(&consul_val.value),
+            value: extracted,
         };
     };
 }
@@ -110,25 +115,26 @@ fn create_prefix_iter_linter(prefix: String) -> impl Fn(Vec<String>) -> Vec<Stri
     };
 }
 
-// Json is always an array of items
+// Consul Response is always a JSON array of items
 fn process_consul_response(
     response: Response,
     display_cfg: KVDisplayConfig,
 ) -> Result<KVValue, KVError> {
-    let result_items =
-        response
-            .into_json::<Vec<ConsulValue>>()
-            .map(|vec_consul_vals| -> Vec<KVValue> {
-                vec_consul_vals
-                    .into_iter()
-                    .map(to_kv_value(display_cfg.clone()))
-                    .collect()
-            });
+    let kv_value_mapper = |vec_consul_vals: Vec<ConsulValue>| -> Vec<KVValue> {
+        return vec_consul_vals
+            .into_iter()
+            .map(to_kv_value(display_cfg))
+            .collect::<Vec<KVValue>>();
+    };
+
+    let result_items = response
+        .into_json::<Vec<ConsulValue>>()
+        .map(kv_value_mapper);
 
     return match result_items {
         Err(_) => Err(KVError::ValueFormatErr),
         Ok(items) => match items.first() {
-            Some(&ref item) => Ok(item.clone()),
+            Some(item) => Ok(item.clone()),
             None => Err(KVError::NoValueErr),
         },
     };
@@ -172,7 +178,7 @@ impl<'a> KVRemoteSource for ConsulRemote<'a> {
             KVSubs::Read(read_cmd) => {
                 let read_res = self.read_path(read_cmd.clone());
                 match read_res {
-                    Ok(kv_val) => print!("{}", kv_val.value),
+                    Ok(kv_val) => print!("{}", kv_val),
                     Err(err) => eprintln!("{err}"),
                 }
             }
@@ -225,24 +231,23 @@ impl<'a> KVRemoteSource for ConsulRemote<'a> {
     fn write_path(&self, write_cfg: WriteCmdConfig) -> Result<(), KVError> {
         let write_new_value = |content| self.write_to_path(write_cfg.clone(), content);
 
-        if write_cfg.is_in_place_edit {
-            return self
-                .read_path(ReadCmdConfig {
-                    is_encoded: false,
-                    path: write_cfg.path.to_owned(),
-                })
-                .and_then(|kv_val| kv_val.inline_edit_value())
-                .and_then(write_new_value);
+        return if write_cfg.is_in_place_edit {
+            self.read_path(ReadCmdConfig {
+                is_encoded: false,
+                path: write_cfg.path.to_owned(),
+            })
+            .and_then(|kv_val| kv_val.inline_edit_value())
+            .and_then(write_new_value)
         } else {
-            return match write_cfg.data_file.to_owned() {
+            match write_cfg.data_file.to_owned() {
                 Some(file) => {
                     return fs::read_to_string(file)
                         .or_else(KVError::wrap_as_write_err)
                         .and_then(write_new_value);
                 }
                 None => Ok(()),
-            };
-        }
+            }
+        };
     }
 }
 

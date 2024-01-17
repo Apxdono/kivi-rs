@@ -4,6 +4,9 @@ const PATH_DELIMITER: &str = "/";
 
 /// Safely decodes Base 64 encoded string
 pub fn decodeb64_safe(value: &str) -> String {
+    if value.is_empty() {
+        return value.to_string();
+    }
     let bytes: Vec<u8> = general_purpose::STANDARD.decode(value).unwrap_or(vec![]);
     return String::from_utf8(bytes).unwrap_or_default();
 }

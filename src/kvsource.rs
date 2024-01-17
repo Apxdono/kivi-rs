@@ -1,4 +1,5 @@
 use std::borrow::ToOwned;
+use std::fmt::Formatter;
 use std::{error::Error, fmt::Display};
 
 use crate::cli_def::{ListCmdConfig, ReadCmdConfig, WriteCmdConfig};
@@ -20,11 +21,11 @@ impl KVValue {
     }
 }
 
-/// Useful empty value
-pub const EMPTY_KV_VALUE: KVValue = KVValue {
-    value: "".to_owned(),
-    path: "".to_owned(),
-};
+impl Display for KVValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.value)
+    }
+}
 
 /// Configuration that dictates how to print [`KVValue`].
 #[derive(Debug, Clone, Copy)]

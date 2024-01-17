@@ -8,7 +8,7 @@ use ureq::{Agent, AgentBuilder, Error, Response};
 use crate::http_ext::TokenAuthHeaderMiddleware;
 use crate::{
     cli_def::{KVSubs, ListCmdConfig, ReadCmdConfig, WriteCmdConfig},
-    kvsource::{KVDisplayConfig, KVError, KVRemoteSource, KVValue},
+    kv_commons::{KVDisplayConfig, KVError, KVRemoteSource, KVValue},
     utils::*,
 };
 

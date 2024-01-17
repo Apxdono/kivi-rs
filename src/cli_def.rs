@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 
-use crate::consul_source::ConsulCommandConfig;
+use crate::consul_remote::ConsulCommandConfig;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

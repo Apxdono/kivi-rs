@@ -3,14 +3,14 @@ use std::time::Duration;
 use ureq::AgentBuilder;
 
 mod cli_def;
-mod consul_source;
+mod consul_remote;
 mod http_ext;
-mod kvsource;
+mod kv_commons;
 mod utils;
 
 use cli_def::Subs;
 
-use crate::{consul_source::ConsulRemote, kvsource::KVRemoteSource};
+use crate::{consul_remote::ConsulRemote, kv_commons::KVRemoteSource};
 
 const DEFAULT_KO_TIME: Duration = Duration::from_secs(5);
 

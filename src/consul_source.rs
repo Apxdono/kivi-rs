@@ -6,6 +6,7 @@ use crate::{
 use clap::Parser;
 use core::result::Result;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use ureq::{Agent, AgentBuilder, Error, Middleware, Request, Response};
 
 const KV_API_PATH: &str = "/v1/kv/";
@@ -196,7 +197,11 @@ impl<'a> KVSource for ConsulRemote<'a> {
                 .and_then(write_new_value);
         } else {
             return match write_cfg.data_file.to_owned() {
-                Some(file) => read_file_value(file).and_then(write_new_value),
+                Some(file) => {
+                    return fs::read_to_string(file)
+                        .or_else(KVError::as_write_err)
+                        .and_then(write_new_value);
+                }
                 None => Ok(()),
             };
         }

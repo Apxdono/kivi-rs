@@ -1,5 +1,3 @@
-use std::fs;
-
 use base64::{engine::general_purpose, Engine as _};
 
 use crate::kvsource::KVError;
@@ -57,15 +55,6 @@ pub fn edit_old_value(content: String) -> Result<String, KVError> {
 
     return match modified {
         Ok(body) => Ok(body),
-        Err(err) => Err(KVError::DataFileErr(format!("{err}"))),
-    };
-}
-
-pub fn read_file_value(file: String) -> Result<String, KVError> {
-    let content = fs::read_to_string(file);
-
-    return match content {
-        Ok(body) => Ok(body),
-        Err(err) => Err(KVError::DataFileErr(format!("{err}"))),
+        Err(err) => Err(KVError::ValueWriteErr(format!("{err}"))),
     };
 }

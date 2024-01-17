@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +22,13 @@ pub enum KVError {
     AuthenticationErr,
     NoValueErr,
     ValueFormatErr,
-    DataFileErr(String),
+    ValueWriteErr(String),
+}
+
+impl KVError {
+    pub fn as_write_err<T>(err: impl Error) -> Result<T, KVError> {
+        return Err(KVError::ValueWriteErr(format!("{}", err)));
+    }
 }
 
 impl Display for KVError {
@@ -33,7 +39,7 @@ impl Display for KVError {
             KVError::AuthenticationErr => write!(f, "Error: remote authentication required"),
             KVError::NoValueErr => write!(f, "<unknown_value>"),
             KVError::ValueFormatErr => write!(f, "<err_value>"),
-            KVError::DataFileErr(msg) => write!(f, "<file_error:{}>", msg),
+            KVError::ValueWriteErr(msg) => write!(f, "<file_error:{}>", msg),
         }
     }
 }

@@ -1,13 +1,16 @@
+use core::result::Result;
+use std::fs;
+
+use clap::Parser;
+use serde::{Deserialize, Serialize};
+use ureq::{Agent, AgentBuilder, Error, Response};
+
+use crate::http_ext::TokenAuthHeaderMiddleware;
 use crate::{
     cli_def::{KVSubs, ListCmdConfig, ReadCmdConfig, WriteCmdConfig},
-    kvsource::{KVDisplayConfig, KVError, KVSource, KVValue},
+    kvsource::{KVDisplayConfig, KVError, KVRemoteSource, KVValue},
     utils::*,
 };
-use clap::Parser;
-use core::result::Result;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use ureq::{Agent, AgentBuilder, Error, Middleware, Request, Response};
 
 const KV_API_PATH: &str = "/v1/kv/";
 const FIRST_LEVEL_KEYS_PARAMS: &str = "?keys=true&separator=/";
@@ -18,37 +21,18 @@ pub struct ConsulRemote<'a> {
     pub agent: Agent,
 }
 
-///
-struct ConsulAuthMiddleware {
-    token: Option<String>,
-}
-
-impl ConsulAuthMiddleware {
-    fn new(token: Option<String>) -> Self {
-        Self { token }
-    }
-}
-
-impl Middleware for ConsulAuthMiddleware {
-    fn handle(&self, request: Request, next: ureq::MiddlewareNext) -> Result<Response, Error> {
-        let req: Request = match &self.token {
-            Some(token) => request.set("X-CONSUL-TOKEN", token.as_str()),
-            _ => request,
-        };
-        next.handle(req)
-    }
-}
-
 impl<'a> ConsulRemote<'a> {
+    /// Ctor for [`ConsulRemote`]
     pub fn new(config: &'a ConsulCommandConfig, agent_builder: AgentBuilder) -> Self {
+        let authorizer =
+            TokenAuthHeaderMiddleware::new("X-CONSUL-TOKEN".to_owned(), config.token.to_owned());
         Self {
             config,
-            agent: agent_builder
-                .middleware(ConsulAuthMiddleware::new(config.token.to_owned()))
-                .build(),
+            agent: agent_builder.middleware(authorizer).build(),
         }
     }
 }
+
 /// Represents stored/read Consul Value
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -61,32 +45,40 @@ struct ConsulValue {
     modify_index: u32,
 }
 
+/// Subset of Consul specific commands
 #[derive(Parser, Debug)]
 #[command(
     about = "Connect to Consul Server",
     long_about = "Connect to Consul Server"
 )]
 pub struct ConsulCommandConfig {
+    /// Consul token for authentication
     #[arg(
         short = 't',
-        long,
+        long = "token",
         env = "CONSUL_HTTP_TOKEN",
         help = "Consul token to supply, leave blank to skip authentication"
     )]
     pub token: Option<String>,
+
+    /// Consul url
     #[arg(
-        short='u',
-        long,
+        short = 'u',
+        long = "url",
         env = "CONSUL_HTTP_ADDR",
-        default_value_t = String::from("http://127.0.0.1:8500"),
-        help = "Consul address"
+        help = "Consul token to supply, leave blank to skip authentication",
+        default_value_t = String::from("http://127.0.0.1:8500")
     )]
     pub url: String,
 
+    /// Consul command to execute
     #[command(subcommand)]
     pub kv_command: KVSubs,
 }
 
+/// Converts internal [`ConsulValue`] to [`KVValue`].
+///
+/// * `display_cfg` - [`KVDisplayConfig`] that determines how to represent the display value (b64 or plain string).  
 fn to_kv_value(display_cfg: KVDisplayConfig) -> impl Fn(ConsulValue) -> KVValue {
     return move |consul_val: ConsulValue| {
         let extractor = match display_cfg.as_b64_encoded {
@@ -101,6 +93,12 @@ fn to_kv_value(display_cfg: KVDisplayConfig) -> impl Fn(ConsulValue) -> KVValue 
     };
 }
 
+/// Linter of Consul keys. Used to remove the prefix after list command is complete.
+///
+/// This is done to align response from Consul with other KV storages that return only immediate
+/// child node names instead of full paths.
+///
+/// See [`create_str_linter()`]
 fn create_prefix_iter_linter(prefix: String) -> impl Fn(Vec<String>) -> Vec<String> {
     let keys_linter = create_str_linter(Some(prefix.to_owned()), None, false);
     return move |keys: Vec<String>| -> Vec<String> {
@@ -137,6 +135,22 @@ fn process_consul_response(
 }
 
 impl<'a> ConsulRemote<'a> {
+    /**
+    Create properly formed Consul KV HTTP API URL.
+
+    Suffix is a relative path string that captures all path chunks that follow /v1/kv/ base path.
+    Leading `/` in suffix is removed before url is formed.
+
+    See [build_url()]
+
+    Examples:
+
+    ```
+    assert_eq!("http://127.0.0.1:8500/v1/kv/some/value/under/path", self.to_consul_url("some/value/under/path");
+
+    assert_eq!("http://127.0.0.1:8500/v1/kv/other/value/under/path", self.to_consul_url("/other/value/under/path");
+    ````
+     */
     fn to_consul_url(&self, suffix: &String) -> String {
         return build_url(&self.config.url, KV_API_PATH, suffix);
     }
@@ -152,61 +166,7 @@ impl<'a> ConsulRemote<'a> {
     }
 }
 
-impl<'a> KVSource for ConsulRemote<'a> {
-    fn list(&self, list_cfg: ListCmdConfig) -> Result<Vec<String>, KVError> {
-        let consul_url = self.to_consul_url(&list_cfg.prefix) + FIRST_LEVEL_KEYS_PARAMS;
-        let request = self.agent.get(&consul_url);
-
-        let res_response: Result<ureq::Response, ureq::Error> = request.call();
-
-        return match res_response {
-            Err(status) => remap_consul_errors(status),
-            Ok(response) => Ok(response
-                .into_json::<Vec<String>>()
-                .map(create_prefix_iter_linter(list_cfg.prefix))
-                .unwrap()),
-        };
-    }
-
-    fn read_path(&self, read_cfg: ReadCmdConfig) -> Result<KVValue, KVError> {
-        let consul_url = self.to_consul_url(&read_cfg.path);
-        let request = self.agent.get(&consul_url);
-
-        let res_response: Result<ureq::Response, ureq::Error> = request.call();
-        let kv_display_config = KVDisplayConfig {
-            as_b64_encoded: read_cfg.is_encoded,
-        };
-
-        return match res_response {
-            Err(status) => remap_consul_errors(status),
-            Ok(response) => process_consul_response(response, kv_display_config),
-        };
-    }
-
-    fn write_path(&self, write_cfg: WriteCmdConfig) -> Result<(), KVError> {
-        let write_new_value = |content| self.write_to_path(write_cfg.clone(), content);
-
-        if write_cfg.is_in_place_edit {
-            return self
-                .read_path(ReadCmdConfig {
-                    is_encoded: false,
-                    path: write_cfg.path.to_owned(),
-                })
-                .map(|kv_val| kv_val.value)
-                .and_then(edit_old_value)
-                .and_then(write_new_value);
-        } else {
-            return match write_cfg.data_file.to_owned() {
-                Some(file) => {
-                    return fs::read_to_string(file)
-                        .or_else(KVError::as_write_err)
-                        .and_then(write_new_value);
-                }
-                None => Ok(()),
-            };
-        }
-    }
-
+impl<'a> KVRemoteSource for ConsulRemote<'a> {
     fn execute_kv_command(&self) {
         match &self.config.kv_command {
             KVSubs::Read(read_cmd) => {
@@ -229,6 +189,59 @@ impl<'a> KVSource for ConsulRemote<'a> {
                     eprintln!("{err}");
                 }
             }
+        }
+    }
+
+    fn list(&self, list_cfg: ListCmdConfig) -> Result<Vec<String>, KVError> {
+        let consul_url = self.to_consul_url(&list_cfg.prefix) + FIRST_LEVEL_KEYS_PARAMS;
+        let request = self.agent.get(&consul_url);
+
+        let res_response = request.call();
+
+        return match res_response {
+            Err(status) => remap_consul_errors(status),
+            Ok(response) => Ok(response
+                .into_json::<Vec<String>>()
+                .map(create_prefix_iter_linter(list_cfg.prefix))
+                .unwrap()),
+        };
+    }
+
+    fn read_path(&self, read_cfg: ReadCmdConfig) -> Result<KVValue, KVError> {
+        let consul_url = self.to_consul_url(&read_cfg.path);
+        let request = self.agent.get(&consul_url);
+
+        let res_response = request.call();
+        let kv_display_config = KVDisplayConfig {
+            as_b64_encoded: read_cfg.is_encoded,
+        };
+
+        return match res_response {
+            Err(status) => remap_consul_errors(status),
+            Ok(response) => process_consul_response(response, kv_display_config),
+        };
+    }
+
+    fn write_path(&self, write_cfg: WriteCmdConfig) -> Result<(), KVError> {
+        let write_new_value = |content| self.write_to_path(write_cfg.clone(), content);
+
+        if write_cfg.is_in_place_edit {
+            return self
+                .read_path(ReadCmdConfig {
+                    is_encoded: false,
+                    path: write_cfg.path.to_owned(),
+                })
+                .and_then(|kv_val| kv_val.inline_edit_value())
+                .and_then(write_new_value);
+        } else {
+            return match write_cfg.data_file.to_owned() {
+                Some(file) => {
+                    return fs::read_to_string(file)
+                        .or_else(KVError::wrap_as_write_err)
+                        .and_then(write_new_value);
+                }
+                None => Ok(()),
+            };
         }
     }
 }

@@ -73,7 +73,7 @@ pub struct ConsulCommandConfig {
 
     /// Consul command to execute
     #[command(subcommand)]
-    pub kv_command: KVSubs,
+    pub kv_command: Option<KVSubs>,
 }
 
 /// Converts internal [`ConsulValue`] to [`KVValue`].
@@ -83,7 +83,7 @@ fn to_kv_value(display_cfg: KVDisplayConfig) -> impl Fn(ConsulValue) -> KVValue 
     return move |consul_val: ConsulValue| {
         let extractor = match display_cfg.as_b64_encoded {
             true => identity_str,
-            false => decodeb64_safe,
+            false => decodeb_64_safe,
         };
 
         let extracted = match consul_val.value {
@@ -152,12 +152,17 @@ impl<'a> ConsulRemote<'a> {
     Examples:
 
     ```
-    assert_eq!("http://127.0.0.1:8500/v1/kv/some/value/under/path", self.to_consul_url("some/value/under/path");
+    use kivi_rs::consul_remote::{ConsulCommandConfig, ConsulRemote};
+    use ureq::AgentBuilder;
+    let cmd_cfg = ConsulCommandConfig {url: "http://127.0.0.1:8500".to_owned(), token: None, kv_command: None};
+    let me = ConsulRemote::new(&cmd_cfg, AgentBuilder::new());
 
-    assert_eq!("http://127.0.0.1:8500/v1/kv/other/value/under/path", self.to_consul_url("/other/value/under/path");
+    assert_eq!("http://127.0.0.1:8500/v1/kv/some/value/under/path", me.to_consul_url(&"some/value/under/path".to_owned()));
+
+    assert_eq!("http://127.0.0.1:8500/v1/kv/other/value/under/path", me.to_consul_url(&"/other/value/under/path".to_owned()));
     ````
      */
-    fn to_consul_url(&self, suffix: &String) -> String {
+    pub fn to_consul_url(&self, suffix: &String) -> String {
         return build_url(&self.config.url, KV_API_PATH, suffix);
     }
 
@@ -175,26 +180,27 @@ impl<'a> ConsulRemote<'a> {
 impl<'a> KVRemoteSource for ConsulRemote<'a> {
     fn execute_kv_command(&self) {
         match &self.config.kv_command {
-            KVSubs::Read(read_cmd) => {
+            Some(KVSubs::Read(read_cmd)) => {
                 let read_res = self.read_path(read_cmd.clone());
                 match read_res {
                     Ok(kv_val) => print!("{}", kv_val),
                     Err(err) => eprintln!("{err}"),
                 }
             }
-            KVSubs::List(list_cmd) => {
+            Some(KVSubs::List(list_cmd)) => {
                 let list_res = self.list(list_cmd.clone());
                 match list_res {
                     Ok(keys) => println!("{}", keys.join("\n")),
                     Err(err) => eprintln!("{err}"),
                 }
             }
-            KVSubs::Write(write_cmd) => {
+            Some(KVSubs::Write(write_cmd)) => {
                 let write_res = self.write_path(write_cmd.clone());
                 if let Err(err) = write_res {
                     eprintln!("{err}");
                 }
             }
+            None => todo!(),
         }
     }
 
@@ -231,7 +237,7 @@ impl<'a> KVRemoteSource for ConsulRemote<'a> {
     fn write_path(&self, write_cfg: WriteCmdConfig) -> Result<(), KVError> {
         let write_new_value = |content| self.write_to_path(write_cfg.clone(), content);
 
-        return if write_cfg.is_in_place_edit {
+        return if write_cfg.is_inline_edit {
             self.read_path(ReadCmdConfig {
                 is_encoded: false,
                 path: write_cfg.path.to_owned(),

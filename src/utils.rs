@@ -3,7 +3,7 @@ use base64::{engine::general_purpose, Engine as _};
 const PATH_DELIMITER: &str = "/";
 
 /// Safely decodes Base 64 encoded string
-pub fn decodeb64_safe(value: &str) -> String {
+pub fn decodeb_64_safe(value: &str) -> String {
     if value.is_empty() {
         return value.to_string();
     }
@@ -27,10 +27,11 @@ remove prefix or suffix from a string.
 Examples
 
 ```
-let linter = create_str_linter(Some("https://"), Some(":443"), true);
+use kivi_rs::utils::create_str_linter;
+let linter = create_str_linter(Some("https://".to_owned()), Some(":443".to_owned()), true);
 
-assert_eq!("example.com", linter("  https://example.com:443  "))
-assert_eq!("another-example.com", linter("another-example.com"))
+assert_eq!("example.com", linter("  https://example.com:443  ".to_owned()));
+assert_eq!("another-example.com", linter("another-example.com".to_owned()));
 ```
 */
 pub fn create_str_linter(
@@ -70,21 +71,24 @@ Build a full URL using url parts. All url parts are [`str::trim()`]'ed before ur
 Examples:
 
 ```
-let url = build_url("http://example.com/", "/base_path/", "/new-post");
+use kivi_rs::utils::build_url;
+let url = build_url("https://example.com/", "/base_path/", "/new-post");
 
-assert_eq!("http://example.com/base_path/new-post", url);
+assert_eq!("https://example.com/base_path/new-post", url);
 ```
 OR
 ```
-let url = build_url("http://example.com", "/base_path/", "new-post");
+use kivi_rs::utils::build_url;
+let url = build_url("https://example.com", "/base_path/", "new-post");
 
-assert_eq!("http://example.com/base_path/new-post", url);
+assert_eq!("https://example.com/base_path/new-post", url);
 ```
 **PAY ATTENTION**
 ```
-let url = build_url("http://example.com", "/base_path", "/new-post");
+use kivi_rs::utils::build_url;
+let url = build_url("https://example.com", "/base_path", "/new-post");
 /// Probably not what was intended.
-assert_eq!("http://example.com/base_pathnew-post", url);
+assert_eq!("https://example.com/base_pathnew-post", url);
 ```
 */
 pub fn build_url(url: &str, base_path: &str, suffix: &str) -> String {

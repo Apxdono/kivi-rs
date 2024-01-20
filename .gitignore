@@ -1,6 +1,9 @@
 target
-.consul-token
+
 Cargo.lock
 .vscode
 .idea
 *.iml
+
+.consul-token
+.etcd-token

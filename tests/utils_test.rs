@@ -1,9 +1,7 @@
 #[cfg(test)]
 #[path = "../src/utils.rs"]
 mod test {
-    use kivi_rs::utils::{
-        build_url, create_path_linter, create_str_linter, decodeb_64_safe, identity_str,
-    };
+    use kivi_rs::utils::{decodeb_64_safe, identity_str};
 
     #[test]
     fn test_identity_str() {

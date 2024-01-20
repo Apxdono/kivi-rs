@@ -11,13 +11,34 @@ services:
      - ./composecfg/server-acl.json:/consul/config/consul-acl.json
      - ./composecfg/kv_dump.json:/consul/dumps/kv_dump.json
     networks:
-      - consul
+      - kvnet
     ports:
       - "8500:8500"
       - "8600:8600/tcp"
       - "8600:8600/udp"
     command: "agent -bootstrap-expect=1"
 
+  etcd-server:
+    image: gcr.io/etcd-development/etcd:v3.5.11
+    hostname: etcd-server
+    container_name: etcd-server
+    command:
+      - etcd
+      - --name=etcd-server
+      - --data-dir=data.etcd
+      - --advertise-client-urls=http://etcd-server:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --initial-advertise-peer-urls=http://etcd-server:2380
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-cluster=etcd-server=http://etcd-server:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=etcd-cluster
+    ports:
+      - "2379"
+      - "2380"
+    networks:
+      - kvnet
+
 networks:
-  consul:
+  kvnet:
     driver: bridge

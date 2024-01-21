@@ -3,13 +3,13 @@ version: "3"
 services:
   consul-server:
     image: hashicorp/consul:1.17.1
-    container_name: consul-server1
+    container_name: consul-server
     restart: always
     volumes:
-     - ./composecfg/server.json:/consul/config/server.json
-     - ./composecfg/certs/:/consul/config/certs/
-     - ./composecfg/server-acl.json:/consul/config/consul-acl.json
-     - ./composecfg/kv_dump.json:/consul/dumps/kv_dump.json
+     - ./docker-config/server.json:/consul/config/server.json
+     - ./docker-config/certs/:/consul/config/certs/
+     - ./docker-config/server-acl.json:/consul/config/consul-acl.json
+     - ./docker-config/kv_dump.json:/consul/dumps/kv_dump.json
     networks:
       - kvnet
     ports:
@@ -38,6 +38,36 @@ services:
       - "2380"
     networks:
       - kvnet
+  # Util container to run commands inside the cluster. Envelops `docker compose exec`
+  # and other scripts
+  docutil: &docutil
+    build:
+      dockerfile: Dockerfile-dind
+    container_name: docutil
+    tty: true
+    privileged: true
+    volumes:
+      - ./:/opt/kivi-rs/
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker:/var/lib/docker:rw
+    networks:
+      - kvnet
+
+  # Bootstrap consul automatically on UP command
+  consulboot:
+    <<: *docutil
+    container_name: consulboot
+    depends_on:
+      - consul-server
+    command: ["sh", "./exec/consulboot.sh"]
+
+  # Bootstrap etcd automatically on UP command
+  etcdboot:
+    <<: *docutil
+    container_name: etcdboot
+    depends_on:
+      - etcd-server
+    command: ["sh", "./exec/etcdboot.sh"]
 
 networks:
   kvnet:

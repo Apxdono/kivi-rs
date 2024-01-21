@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 
-use crate::consul_remote::ConsulCommandConfig;
+use crate::{consul_remote::ConsulCommandConfig, etcd_remote::EtcdCommandConfig};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -18,6 +18,7 @@ pub struct Cli {
 #[command(subcommand_required = true)]
 pub enum Subs {
     Consul(ConsulCommandConfig),
+    Etcd(EtcdCommandConfig),
 }
 
 #[derive(Subcommand, Debug)]

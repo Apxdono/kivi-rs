@@ -1,0 +1,7 @@
+FROM docker:dind
+
+USER root
+
+RUN apk add jq bash uuidgen && mkdir -p /opt/project
+
+WORKDIR /opt/kivi-rs

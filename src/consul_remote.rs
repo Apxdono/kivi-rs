@@ -15,6 +15,32 @@ use crate::{
 const KV_API_PATH: &str = "/v1/kv/";
 const FIRST_LEVEL_KEYS_PARAMS: &str = "?keys=true&separator=/";
 
+#[derive(Parser, Debug)]
+/// Subset of Consul specific commands
+pub struct ConsulCommandConfig {
+    /// Consul token for authentication
+    #[arg(
+        short = 't',
+        long = "token",
+        env = "CONSUL_HTTP_TOKEN",
+        help = "Consul token to supply, leave blank to skip authentication"
+    )]
+    pub token: Option<String>,
+
+    /// Consul url
+    #[arg(
+        short = 'u',
+        long = "url",
+        env = "CONSUL_HTTP_ADDR",
+        help = "Consul remote address",
+        default_value_t = String::from("http://127.0.0.1:8500")
+    )]
+    pub url: String,
+
+    /// Consul command to execute
+    #[command(subcommand)]
+    pub kv_command: Option<KVSubs>,
+}
 /// Represents Consul KV source
 pub struct ConsulRemote<'a> {
     pub config: &'a ConsulCommandConfig,
@@ -45,40 +71,9 @@ struct ConsulValue {
     modify_index: u32,
 }
 
-/// Subset of Consul specific commands
-#[derive(Parser, Debug)]
-#[command(
-    about = "Connect to Consul Server",
-    long_about = "Connect to Consul Server"
-)]
-pub struct ConsulCommandConfig {
-    /// Consul token for authentication
-    #[arg(
-        short = 't',
-        long = "token",
-        env = "CONSUL_HTTP_TOKEN",
-        help = "Consul token to supply, leave blank to skip authentication"
-    )]
-    pub token: Option<String>,
-
-    /// Consul url
-    #[arg(
-        short = 'u',
-        long = "url",
-        env = "CONSUL_HTTP_ADDR",
-        help = "Consul token to supply, leave blank to skip authentication",
-        default_value_t = String::from("http://127.0.0.1:8500")
-    )]
-    pub url: String,
-
-    /// Consul command to execute
-    #[command(subcommand)]
-    pub kv_command: Option<KVSubs>,
-}
-
 /// Converts internal [`ConsulValue`] to [`KVValue`].
 ///
-/// * `display_cfg` - [`KVDisplayConfig`] that determines how to represent the display value (b64 or plain string).  
+/// * `display_cfg` - [`KVDisplayConfig`] that determines how to represent the display value (b64 or plain string).
 fn to_kv_value(display_cfg: KVDisplayConfig) -> impl Fn(ConsulValue) -> KVValue {
     return move |consul_val: ConsulValue| {
         let extractor = match display_cfg.as_b64_encoded {
